@@ -1,0 +1,52 @@
+name: g-assistant  # Esto fuerza el nombre del proyecto
+# Los VOLUMES son carpetas persistentes en tu Mac. 
+# Sirven para que si apagas Docker, la base de datos no pierda los chats.
+volumes:
+  postgres_data:
+    driver: local
+
+services:
+  # --- SERVICIO 1: BASE DE DATOS ---
+  langgraph-postgres:
+    image: postgres:16  # Descarga la imagen oficial de PostgreSQL
+    environment:
+      # Estos datos crean la base de datos automáticamente al iniciar
+      POSTGRES_DB: langgraph_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password123  
+    ports:
+      - "5432:5432"  # Mapea el puerto de la DB a tu Mac
+    volumes:
+      - postgres_data:/var/lib/postgresql/data # Guarda los datos en el volumen de arriba
+    healthcheck:
+      # Este comando verifica que la DB esté lista antes de que el Agente intente conectar
+      test: ["CMD-SHELL", "pg_isready -U postgres -d langgraph_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # --- SERVICIO 2: REDIS ----
+  langgraph-redis:
+    image: redis:7-alpine # Versión ligera de Redis
+    ports:
+      - "6379:6379"
+
+  # --- SERVICIO 3: TU AGENTE ---
+  langgraph-api:
+    #build: .             # This tells Docker to use the local Dockerfile intad of downloading the image
+    image: g-assistant-image:latest #image name
+    ports:
+      - "8123:8000" # Accedes desde tu Mac/SDK por el 8123
+    depends_on:
+      langgraph-postgres:
+        condition: service_healthy # No arranca el agente hasta que la DB esté lista
+      langgraph-redis:
+        condition: service_started
+    env_file:
+      - .env # Carga mis llaves
+    environment:
+      # Estas variables le dicen a LangGraph cómo conectar con los otros contenedores
+      # Nota que usamos los nombres de los servicios ('langgraph-postgres' y 'redis') como si fueran URLs
+      DATABASE_URI: "postgres://postgres:password123@langgraph-postgres:5432/langgraph_db"
+      REDIS_URI: "redis://langgraph-redis:6379"
+      
