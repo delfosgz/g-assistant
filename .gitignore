@@ -134,3 +134,6 @@ google_credentials.json
 
 #langgraph 
 .langgraph_api
+
+#computer
+.DS_Store
